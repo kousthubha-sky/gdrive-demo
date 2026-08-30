@@ -222,6 +222,23 @@ To do it by hand instead:
    The start command runs `prisma migrate deploy`, so the schema is created on first boot.
 5. Back in the Google Cloud console, add `https://drive-xyz.onrender.com/api/auth/google/callback` to the OAuth client's authorised redirect URIs.
 
+### Keeping the free instance awake
+
+Render's free tier spins a service down after 15 minutes without inbound traffic, and the cold start that follows takes most of a minute.
+A reviewer opening a cold link may well assume it is broken.
+
+`.github/workflows/keep-warm.yml` pings `/api/health` every 10 minutes to prevent that.
+The endpoint deliberately does not touch the database, so the ping is nearly free and does not keep waking Neon.
+
+Two caveats worth knowing before relying on it:
+
+- A free Render account gets **750 instance-hours a month**, and a month is about 730 hours.
+  Keeping one service up around the clock uses essentially the whole allowance, so a second free service would exceed it.
+- GitHub runs scheduled workflows only approximately on time, and disables them on a repository with no activity for 60 days.
+  Re-enable it from the Actions tab if the pings stop.
+
+The health response includes `uptime`, which resets on a cold start, so the workflow logs show whether the instance really stayed up.
+
 ### A note on Vercel
 
 Vercel runs serverless functions with an ephemeral filesystem, which is fine here because file bytes go to S3 rather than to disk.

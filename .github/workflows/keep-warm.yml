@@ -1,0 +1,38 @@
+# Render's free tier spins a service down after 15 minutes with no inbound
+# traffic, and the cold start that follows takes the better part of a minute.
+# This pings the health endpoint often enough that it never idles that long.
+#
+# Two things to know:
+#   - GitHub only runs scheduled workflows roughly on time. Under load they can
+#     be delayed by 10 minutes or more, so the interval is 10 and not 14.
+#   - GitHub disables scheduled workflows on a repository with no activity for
+#     60 days. Re-enable it from the Actions tab if the pings stop.
+name: Keep warm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # so it can be triggered by hand before a demo
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping the health endpoint
+        run: |
+          URL="https://gdrive-demo-awkv.onrender.com/api/health"
+
+          # --max-time 90, not the default: a request that arrives while the
+          # instance is cold has to wait out the start-up rather than fail.
+          body=$(curl --silent --show-error --fail --max-time 90 \
+                      --retry 2 --retry-delay 15 --retry-all-errors "$URL")
+
+          echo "$body"
+
+          # uptime resets on a cold start, so a low value means the ping missed
+          # its window and the instance had already been spun down.
+          uptime=$(printf '%s' "$body" | sed -n 's/.*"uptime":\([0-9]*\).*/\1/p')
+          if [ -n "$uptime" ] && [ "$uptime" -lt 120 ]; then
+            echo "::warning::Instance uptime is ${uptime}s - it had spun down and cold-started."
+          fi

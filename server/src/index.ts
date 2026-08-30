@@ -39,8 +39,17 @@ app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
 app.use(passport.initialize());
 
+/**
+ * Deliberately does not touch the database. It is Render's health check and the
+ * target of the keep-warm ping, so it runs constantly; a query here would wake
+ * Neon every ten minutes for no reason.
+ *
+ * `uptime` is the useful part: on a free instance it resets to ~0 whenever the
+ * service has been spun down and cold-started, so the pinger's logs show
+ * whether the instance actually stayed up.
+ */
 app.get("/api/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({ ok: true, uptime: Math.round(process.uptime()) });
 });
 
 app.use("/api/auth", authRouter);
