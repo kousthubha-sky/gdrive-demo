@@ -1,0 +1,52 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  googleId  String   @unique
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+
+  files          File[]
+  sharesReceived Share[] @relation("SharedWith")
+}
+
+model File {
+  id        String   @id @default(cuid())
+  name      String
+  /// S3 object key. Unique so a stale row can never point at someone else's object.
+  storageKey String  @unique
+  mimeType  String
+  /// Bytes. BigInt because MAX_UPLOAD_BYTES is operator-tunable and INTEGER
+  /// tops out at 2 GB; serialised back to a JS number on the way out.
+  size      BigInt
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  shares Share[]
+
+  @@index([ownerId, createdAt])
+  @@index([ownerId, name])
+}
+
+model Share {
+  id        String   @id @default(cuid())
+  fileId    String
+  file      File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("SharedWith", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([fileId, userId])
+  @@index([userId])
+}

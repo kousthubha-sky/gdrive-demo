@@ -1,0 +1,33 @@
+{
+  "name": "gdrive-demo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A Google Drive-like file manager: Google OAuth, S3 storage, Postgres metadata.",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build && npm --workspace server run build",
+    "start": "npm run db:deploy && node server/dist/index.js",
+    "db:push": "prisma db push --schema server/prisma/schema.prisma",
+    "db:migrate": "prisma migrate dev --schema server/prisma/schema.prisma",
+    "db:deploy": "prisma migrate deploy --schema server/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema server/prisma/schema.prisma"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "prisma@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true
+  }
+}
