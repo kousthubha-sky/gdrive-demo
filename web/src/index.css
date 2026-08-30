@@ -21,12 +21,17 @@ body,
   height: 100%;
 }
 
+/* On :root, not body: this is what tells the browser to paint native UI - file
+   pickers, confirm dialogs, scrollbars, autofill - dark rather than light. */
+:root {
+  color-scheme: dark;
+}
+
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
 }
 
 dialog::backdrop {

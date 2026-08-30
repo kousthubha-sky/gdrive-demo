@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown } from "lucide-react";
 import type { DriveFile } from "../api";
 
 export type Filters = {
@@ -40,58 +42,47 @@ export function applyFilters(files: DriveFile[], f: Filters, myId: string) {
   });
 }
 
+const options = {
+  type: [
+    ["any", "Type"],
+    ["document", "Documents"],
+    ["image", "Images"],
+    ["video", "Video"],
+    ["audio", "Audio"],
+    ["archive", "Archives"],
+  ],
+  people: [
+    ["any", "People"],
+    ["me", "Owned by me"],
+    ["others", "Shared with me"],
+  ],
+  modified: [
+    ["any", "Modified"],
+    ["today", "Today"],
+    ["week", "Last 7 days"],
+    ["month", "Last 30 days"],
+    ["year", "This year"],
+  ],
+} as const satisfies Record<keyof Filters, readonly (readonly [string, string])[]>;
+
 type Props = { value: Filters; onChange: (next: Filters) => void };
 
 export function FilterChips({ value, onChange }: Props) {
-  const active = (key: keyof Filters) => value[key] !== "any";
+  const dirty = value.type !== "any" || value.people !== "any" || value.modified !== "any";
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Chip label="Type" active={active("type")}>
-        <select
-          aria-label="Filter by type"
-          value={value.type}
-          onChange={(e) => onChange({ ...value, type: e.target.value as Filters["type"] })}
-          className="cursor-pointer bg-transparent outline-none"
-        >
-          <option value="any">Type</option>
-          <option value="document">Documents</option>
-          <option value="image">Images</option>
-          <option value="video">Video</option>
-          <option value="audio">Audio</option>
-          <option value="archive">Archives</option>
-        </select>
-      </Chip>
+      {(Object.keys(options) as (keyof Filters)[]).map((key) => (
+        <ChipSelect
+          key={key}
+          label={options[key][0][1]}
+          choices={options[key]}
+          value={value[key]}
+          onSelect={(next) => onChange({ ...value, [key]: next } as Filters)}
+        />
+      ))}
 
-      <Chip label="People" active={active("people")}>
-        <select
-          aria-label="Filter by people"
-          value={value.people}
-          onChange={(e) => onChange({ ...value, people: e.target.value as Filters["people"] })}
-          className="cursor-pointer bg-transparent outline-none"
-        >
-          <option value="any">People</option>
-          <option value="me">Owned by me</option>
-          <option value="others">Shared with me</option>
-        </select>
-      </Chip>
-
-      <Chip label="Modified" active={active("modified")}>
-        <select
-          aria-label="Filter by modified date"
-          value={value.modified}
-          onChange={(e) => onChange({ ...value, modified: e.target.value as Filters["modified"] })}
-          className="cursor-pointer bg-transparent outline-none"
-        >
-          <option value="any">Modified</option>
-          <option value="today">Today</option>
-          <option value="week">Last 7 days</option>
-          <option value="month">Last 30 days</option>
-          <option value="year">This year</option>
-        </select>
-      </Chip>
-
-      {(active("type") || active("people") || active("modified")) && (
+      {dirty && (
         <button
           type="button"
           onClick={() => onChange(noFilters)}
@@ -104,21 +95,82 @@ export function FilterChips({ value, onChange }: Props) {
   );
 }
 
-function Chip({
-  active,
-  children,
+/**
+ * A native <select> would be less code, but its popup is drawn by the OS: it
+ * stays light on a dark page and cannot be made to match the rest of the menus.
+ */
+function ChipSelect({
+  label,
+  choices,
+  value,
+  onSelect,
 }: {
   label: string;
-  active: boolean;
-  children: React.ReactNode;
+  choices: readonly (readonly [string, string])[];
+  value: string;
+  onSelect: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const active = value !== "any";
+  const current = choices.find(([v]) => v === value)?.[1] ?? label;
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
-    <span
-      className={`rounded-full border px-3 py-1.5 text-sm transition ${
-        active ? "border-accent-soft bg-accent-soft text-ink" : "border-line text-ink/90 hover:bg-raised"
-      }`}
-    >
-      {children}
-    </span>
+    <div className="relative">
+      {open && <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />}
+
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-1.5 rounded-full border py-1.5 pr-2.5 pl-3.5 text-sm transition ${
+          active
+            ? "border-accent-soft bg-accent-soft text-ink"
+            : "border-line text-ink/90 hover:bg-raised"
+        }`}
+      >
+        {current}
+        <ChevronDown size={16} className={open ? "rotate-180 transition" : "transition"} />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          className="absolute top-full left-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border border-line bg-raised py-1 shadow-2xl"
+        >
+          {choices.map(([v, text]) => (
+            <button
+              key={v}
+              type="button"
+              role="menuitemradio"
+              aria-checked={v === value}
+              onClick={() => {
+                onSelect(v);
+                setOpen(false);
+                triggerRef.current?.focus();
+              }}
+              className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition hover:bg-line/50"
+            >
+              <Check size={15} className={v === value ? "text-accent" : "invisible"} />
+              {v === "any" ? `Any ${label.toLowerCase()}` : text}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

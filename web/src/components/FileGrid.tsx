@@ -143,7 +143,7 @@ export function FileGrid({
               {menuFor === file.id && (
                 <div
                   role="menu"
-                  className="absolute top-11 right-3 z-20 w-48 overflow-hidden rounded-xl border border-line bg-raised py-1 text-left shadow-2xl"
+                  className="absolute top-11 right-3 z-20 w-56 overflow-hidden rounded-xl border border-line bg-raised py-1 text-left shadow-2xl"
                 >
                   {inTrash ? (
                     <>
@@ -203,7 +203,7 @@ function Item({
       type="button"
       role="menuitem"
       onClick={onClick}
-      className={`flex w-full items-center gap-3 px-4 py-2 text-sm transition hover:bg-line/50 ${
+      className={`flex w-full items-center gap-3 px-4 py-2 text-sm whitespace-nowrap transition hover:bg-line/50 ${
         danger ? "text-danger" : ""
       }`}
     >
