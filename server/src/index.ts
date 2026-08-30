@@ -94,6 +94,6 @@ app.listen(env.PORT, () => {
 // fatal: a briefly unavailable database shouldn't stop the process coming up.
 prisma.$connect().catch((err: Error) => {
   console.error(
-    `\nCannot reach the database. Check DATABASE_URL in .env, then run "npm run db:push".\n  ${err.message}\n`
+    `\nCannot reach the database. Check DATABASE_URL in .env, then run "npm run db:deploy".\n  ${err.message}\n`
   );
 });

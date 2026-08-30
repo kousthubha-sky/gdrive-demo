@@ -94,13 +94,11 @@ filesRouter.get("/", async (req: Request, res: Response) => {
   // Trash is the owner's own bin, so a file shared with you never appears in
   // it; every other view hides trashed files entirely.
   const ownership =
-    scope === "trash"
+    scope === "trash" || scope === "mine" || scope === "starred"
       ? [{ ownerId: me }]
-      : scope === "mine" || scope === "starred"
-        ? [{ ownerId: me }]
-        : scope === "shared"
-          ? [{ shares: { some: { userId: me } } }]
-          : readableBy(me).OR;
+      : scope === "shared"
+        ? [{ shares: { some: { userId: me } } }]
+        : readableBy(me).OR;
 
   const files = await prisma.file.findMany({
     where: {
@@ -268,8 +266,10 @@ filesRouter.post("/:id/shares", async (req: Request<{ id: string }>, res: Respon
 // DELETE /api/files/:id/shares/:userId
 filesRouter.delete("/:id/shares/:userId", async (req: Request<{ id: string; userId: string }>, res: Response) => {
   await assertOwner(req.params.id, req.auth!.id);
-  await prisma.share
-    .delete({ where: { fileId_userId: { fileId: req.params.id, userId: req.params.userId } } })
-    .catch(() => {});
+  // deleteMany, not delete: revoking a share that is already gone is a no-op
+  // rather than an error, and a real database failure still surfaces.
+  await prisma.share.deleteMany({
+    where: { fileId: req.params.id, userId: req.params.userId },
+  });
   res.status(204).end();
 });
