@@ -134,11 +134,27 @@ Vite proxies `/api` to the API, so the browser only ever talks to one origin and
 
 ## Tests
 
+Unit tests, no setup required:
+
 ```bash
 npm --workspace server test
 ```
 
 Covers the filename sanitiser, which is the one place untrusted input is echoed back into a response header.
+
+### End-to-end verification
+
+With the app running and a real `.env`, this exercises every file route against the actual database and S3 bucket:
+
+```bash
+npm run verify
+```
+
+Google's login page cannot be driven from a script, so it mints its own session cookie with `JWT_SECRET` - the same token the OAuth callback issues - and takes the identical code path from there.
+It checks upload, search, presigned download byte-for-byte, rename, star, share and revoke, the access boundaries between two users, trash and restore, and that permanent delete removes the S3 object.
+
+It creates two throwaway users and one small file and deletes all three when it finishes.
+It never calls empty-trash, which would take real files with it.
 
 ## Production build
 
