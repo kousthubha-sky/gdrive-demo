@@ -6,6 +6,8 @@ Sign in with Google, then upload, rename, search, download, delete and share fil
 File bytes live in an S3 bucket; file metadata lives in Postgres.
 One Express process serves both the REST API and the built React SPA, so there is a single origin, a single deploy and no CORS configuration.
 
+New to this codebase? [docs/CODE_TOUR.md](docs/CODE_TOUR.md) walks through it in reading order, with the reasoning behind each decision.
+
 ## Stack
 
 | Layer | Choice |
@@ -25,6 +27,8 @@ One Express process serves both the REST API and the built React SPA, so there i
 │   ├── src/           routes, auth, S3 and validation
 │   └── test/          node:test unit tests
 ├── web/               React SPA (Vite)
+├── scripts/verify.mjs end-to-end check against a live database and bucket
+├── docs/              CODE_TOUR.md (how to read this) and HANDOFF.md
 ├── Dockerfile         multi-stage build of the whole app
 └── docker-compose.yml app + Postgres for local containers
 ```
