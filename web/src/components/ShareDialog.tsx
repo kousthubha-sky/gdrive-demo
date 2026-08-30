@@ -57,18 +57,18 @@ export function ShareDialog({ file, onClose, onChanged }: Props) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Email of a person who has signed in"
-          className="min-w-0 flex-1 rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent"
+          className="min-w-0 flex-1 rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none placeholder:text-muted focus:border-accent"
         />
         <button
           type="submit"
           disabled={busy}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
+          className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-canvas transition hover:brightness-110 disabled:opacity-50"
         >
           {busy ? "Sharing…" : "Share"}
         </button>
       </form>
 
-      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-3 text-sm text-danger">{error}</p>}
 
       <div className="mt-5">
         <p className="text-xs font-medium tracking-wide text-muted uppercase">People with access</p>
@@ -79,7 +79,7 @@ export function ShareDialog({ file, onClose, onChanged }: Props) {
             <span className="text-xs text-muted">Owner</span>
           </li>
           {file?.shares.map(({ user }) => (
-            <li key={user.id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-canvas">
+            <li key={user.id} className="flex items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-raised">
               <Avatar url={user.avatarUrl} name={user.name} />
               <span className="flex-1 truncate">{user.email}</span>
               <button

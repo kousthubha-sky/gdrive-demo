@@ -13,12 +13,12 @@ export function Login({ error }: { error?: string | null }) {
         </p>
 
         {error && (
-          <p className="mt-5 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+          <p className="mt-5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
         )}
 
         <a
           href="/api/auth/google"
-          className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-line bg-surface px-5 py-3 text-sm font-medium transition hover:bg-canvas"
+          className="mt-6 flex w-full items-center justify-center gap-3 rounded-full border border-line bg-raised px-5 py-3 text-sm font-medium transition hover:bg-line/60"
         >
           <GoogleMark />
           Continue with Google

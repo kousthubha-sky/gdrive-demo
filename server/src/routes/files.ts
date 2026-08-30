@@ -26,6 +26,8 @@ const fileSelect = {
   name: true,
   mimeType: true,
   size: true,
+  starred: true,
+  trashedAt: true,
   createdAt: true,
   updatedAt: true,
   ownerId: true,
@@ -81,7 +83,7 @@ async function readableFile(fileId: string, userId: string) {
 
 const listQuery = z.object({
   q: z.string().trim().max(255).optional(),
-  scope: z.enum(["mine", "shared", "all"]).default("all"),
+  scope: z.enum(["mine", "shared", "all", "trash", "starred", "recent"]).default("all"),
 });
 
 // GET /api/files?q=report&scope=mine
@@ -89,24 +91,40 @@ filesRouter.get("/", async (req: Request, res: Response) => {
   const { q, scope } = listQuery.parse(req.query);
   const me = req.auth!.id;
 
+  // Trash is the owner's own bin, so a file shared with you never appears in
+  // it; every other view hides trashed files entirely.
   const ownership =
-    scope === "mine"
+    scope === "trash"
       ? [{ ownerId: me }]
-      : scope === "shared"
-        ? [{ shares: { some: { userId: me } } }]
-        : readableBy(me).OR;
+      : scope === "mine" || scope === "starred"
+        ? [{ ownerId: me }]
+        : scope === "shared"
+          ? [{ shares: { some: { userId: me } } }]
+          : readableBy(me).OR;
 
   const files = await prisma.file.findMany({
     where: {
       OR: ownership,
+      trashedAt: scope === "trash" ? { not: null } : null,
+      ...(scope === "starred" ? { starred: true } : {}),
       ...(q ? { name: { contains: escapeLike(q), mode: "insensitive" as const } } : {}),
     },
     select: fileSelect,
-    orderBy: { createdAt: "desc" },
-    take: 500,
+    orderBy: scope === "recent" ? { updatedAt: "desc" } : { createdAt: "desc" },
+    take: scope === "recent" ? 25 : 500,
   });
 
   res.json(files.map((file) => toJson(file, me)));
+});
+
+// GET /api/files/storage  -> what the sidebar meter shows.
+// Declared before /:id routes so "storage" is never read as a file id.
+filesRouter.get("/storage", async (req: Request, res: Response) => {
+  const { _sum } = await prisma.file.aggregate({
+    where: { ownerId: req.auth!.id },
+    _sum: { size: true },
+  });
+  res.json({ used: Number(_sum.size ?? 0n), quota: env.STORAGE_QUOTA_BYTES });
 });
 
 // POST /api/files   (multipart/form-data, field name "file")
@@ -149,36 +167,77 @@ filesRouter.get("/:id/url", async (req: Request<{ id: string }>, res: Response) 
   res.json({ url: await signedDownloadUrl(file.storageKey, file.name, disposition) });
 });
 
-// PATCH /api/files/:id  { name }
-const renameBody = z.object({ name: filename });
+// PATCH /api/files/:id  { name?, starred? }
+const patchBody = z
+  .object({ name: filename.optional(), starred: z.boolean().optional() })
+  .refine((b) => b.name !== undefined || b.starred !== undefined, "Nothing to update");
+
 filesRouter.patch("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  const { name } = renameBody.parse(req.body);
+  const patch = patchBody.parse(req.body);
   await assertOwner(req.params.id, req.auth!.id);
 
   const file = await prisma.file.update({
     where: { id: req.params.id },
-    data: { name },
+    data: patch,
     select: fileSelect,
   });
   res.json(toJson(file, req.auth!.id));
 });
 
-// DELETE /api/files/:id
+/**
+ * Metadata first: a row without an object is a broken download, an object
+ * without a row is an invisible orphan. Neither is great, but the database is
+ * the source of truth, so it goes first and the bucket is best-effort.
+ */
+async function purge(where: { id: string } | { ownerId: string; trashedAt: { not: null } }) {
+  const doomed = await prisma.file.findMany({ where, select: { id: true, storageKey: true } });
+  if (doomed.length === 0) return 0;
+
+  await prisma.file.deleteMany({ where: { id: { in: doomed.map((f) => f.id) } } });
+  await Promise.all(
+    doomed.map((f) =>
+      deleteObject(f.storageKey).catch((err) =>
+        console.error(`Orphaned S3 object ${f.storageKey}:`, err)
+      )
+    )
+  );
+  return doomed.length;
+}
+
+// DELETE /api/files/trash  -> empty the trash. Before /:id so it is not a file id.
+filesRouter.delete("/trash", async (req: Request, res: Response) => {
+  const deleted = await purge({ ownerId: req.auth!.id, trashedAt: { not: null } });
+  res.json({ deleted });
+});
+
+// DELETE /api/files/:id  -> move to trash. Reversible, and the S3 object stays.
 filesRouter.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
   await assertOwner(req.params.id, req.auth!.id);
 
-  // Metadata first: a row without an object is a broken download, an object
-  // without a row is an invisible orphan. Neither is great, but the DB is the
-  // source of truth, so delete it first and best-effort the bucket. The delete
-  // hands back the row, so the key costs no extra query.
-  const { storageKey } = await prisma.file.delete({
+  const file = await prisma.file.update({
     where: { id: req.params.id },
-    select: { storageKey: true },
+    data: { trashedAt: new Date() },
+    select: fileSelect,
   });
-  await deleteObject(storageKey).catch((err) => {
-    console.error(`Orphaned S3 object ${storageKey}:`, err);
-  });
+  res.json(toJson(file, req.auth!.id));
+});
 
+// POST /api/files/:id/restore  -> back out of the trash
+filesRouter.post("/:id/restore", async (req: Request<{ id: string }>, res: Response) => {
+  await assertOwner(req.params.id, req.auth!.id);
+
+  const file = await prisma.file.update({
+    where: { id: req.params.id },
+    data: { trashedAt: null },
+    select: fileSelect,
+  });
+  res.json(toJson(file, req.auth!.id));
+});
+
+// DELETE /api/files/:id/permanent  -> gone for good, object and all
+filesRouter.delete("/:id/permanent", async (req: Request<{ id: string }>, res: Response) => {
+  await assertOwner(req.params.id, req.auth!.id);
+  await purge({ id: req.params.id });
   res.status(204).end();
 });
 

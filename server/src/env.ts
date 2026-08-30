@@ -21,6 +21,8 @@ const schema = z.object({
   S3_ENDPOINT: z.string().url().optional().or(z.literal("").transform(() => undefined)),
 
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(100 * 1024 * 1024),
+  // Only drives the sidebar meter; uploads are not refused when it is exceeded.
+  STORAGE_QUOTA_BYTES: z.coerce.number().int().positive().default(15 * 1024 * 1024 * 1024),
 });
 
 const parsed = schema.safeParse(process.env);

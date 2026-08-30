@@ -10,6 +10,8 @@ export type DriveFile = {
   name: string;
   mimeType: string;
   size: number;
+  starred: boolean;
+  trashedAt: string | null;
   createdAt: string;
   updatedAt: string;
   ownerId: string;
@@ -17,7 +19,9 @@ export type DriveFile = {
   shares: { user: User }[];
 };
 
-export type Scope = "all" | "mine" | "shared";
+export type Scope = "all" | "mine" | "shared" | "trash" | "starred" | "recent";
+
+export type Storage = { used: number; quota: number };
 
 export class ApiError extends Error {}
 
@@ -30,6 +34,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
+/** Every field on a file that the owner can change goes through PATCH. */
+const patch = (id: string, body: { name?: string; starred?: boolean }) =>
+  request<DriveFile>(`/api/files/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
 export const api = {
   me: () => request<User>("/api/auth/me"),
 
@@ -41,14 +53,21 @@ export const api = {
     return request<DriveFile[]>(`/api/files?${params}`);
   },
 
-  rename: (id: string, name: string) =>
-    request<DriveFile>(`/api/files/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    }),
+  storage: () => request<Storage>("/api/files/storage"),
 
-  remove: (id: string) => request<void>(`/api/files/${id}`, { method: "DELETE" }),
+  restore: (id: string) => request<DriveFile>(`/api/files/${id}/restore`, { method: "POST" }),
+
+  deleteForever: (id: string) =>
+    request<void>(`/api/files/${id}/permanent`, { method: "DELETE" }),
+
+  emptyTrash: () => request<{ deleted: number }>("/api/files/trash", { method: "DELETE" }),
+
+  setStarred: (id: string, starred: boolean) => patch(id, { starred }),
+
+  rename: (id: string, name: string) => patch(id, { name }),
+
+  /** Moves to trash. Reversible via `restore`; the S3 object is untouched. */
+  remove: (id: string) => request<DriveFile>(`/api/files/${id}`, { method: "DELETE" }),
 
   share: (id: string, email: string) =>
     request<DriveFile>(`/api/files/${id}/shares`, {

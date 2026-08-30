@@ -1,19 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { HardDrive, LogOut, Plus, Search, Users } from "lucide-react";
-import { api, type DriveFile, type Scope, type User } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LogOut, Plus, Search, Trash2 } from "lucide-react";
+import { api, type DriveFile, type Scope, type Storage, type User } from "./api";
 import { Avatar } from "./components/Avatar";
-import { FileTable } from "./components/FileTable";
+import { FileGrid } from "./components/FileGrid";
+import { applyFilters, FilterChips, noFilters, type Filters } from "./components/Filters";
 import { Login } from "./components/Login";
 import { Modal } from "./components/Modal";
 import { ShareDialog } from "./components/ShareDialog";
+import { Sidebar } from "./components/Sidebar";
 
 type Upload = { id: number; name: string; percent: number };
+
+const titles: Record<Scope, string> = {
+  all: "Home",
+  mine: "My Drive",
+  shared: "Shared with me",
+  recent: "Recent",
+  starred: "Starred",
+  trash: "Trash",
+};
 
 export default function App() {
   const [user, setUser] = useState<User | null | undefined>(undefined);
   const [files, setFiles] = useState<DriveFile[]>([]);
+  const [storage, setStorage] = useState<Storage | null>(null);
   const [loading, setLoading] = useState(true);
   const [scope, setScope] = useState<Scope>("mine");
+  const [filters, setFilters] = useState<Filters>(noFilters);
   const [rawQuery, setRawQuery] = useState("");
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +38,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const inTrash = scope === "trash";
 
   // OAuth failures come back as an ?error= param on the landing URL.
   const oauthError = new URLSearchParams(window.location.search).get("error");
@@ -42,30 +56,48 @@ export default function App() {
     return () => clearTimeout(t);
   }, [rawQuery]);
 
-  // Bumped per request so a slow earlier list can't land on top of a newer one
-  // - typing quickly fires overlapping searches that return out of order.
-  const listRequest = useRef(0);
-
   const refresh = useCallback(async () => {
     if (!user) return;
-    const id = ++listRequest.current;
     setLoading(true);
     try {
-      const next = await api.listFiles(query, scope);
-      if (id !== listRequest.current) return;
-      setFiles(next);
+      const [list, used] = await Promise.all([api.listFiles(query, scope), api.storage()]);
+      setFiles(list);
+      setStorage(used);
       setError(null);
     } catch (err) {
-      if (id !== listRequest.current) return;
       setError((err as Error).message);
     } finally {
-      if (id === listRequest.current) setLoading(false);
+      setLoading(false);
     }
   }, [user, query, scope]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const visible = useMemo(
+    () => (user ? applyFilters(files, filters, user.id) : []),
+    [files, filters, user]
+  );
+
+  /** Swap an updated row in place, or drop it if it no longer belongs here. */
+  function replace(updated: DriveFile) {
+    setFiles((f) =>
+      // A file trashed while browsing My Drive, or restored while browsing
+      // Trash, no longer belongs in the list it came from.
+      Boolean(updated.trashedAt) === inTrash
+        ? f.map((x) => (x.id === updated.id ? updated : x))
+        : f.filter((x) => x.id !== updated.id)
+    );
+  }
+
+  async function run(action: () => Promise<void>) {
+    try {
+      await action();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function uploadFiles(list: FileList | File[]) {
     for (const file of Array.from(list)) {
@@ -82,25 +114,6 @@ export default function App() {
       }
     }
     await refresh();
-  }
-
-  async function download(file: DriveFile) {
-    try {
-      const { url } = await api.downloadUrl(file.id);
-      window.location.href = url;
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
-
-  async function remove(file: DriveFile) {
-    if (!window.confirm(`Delete "${file.name}"? This cannot be undone.`)) return;
-    try {
-      await api.remove(file.id);
-      setFiles((f) => f.filter((x) => x.id !== file.id));
-    } catch (err) {
-      setError((err as Error).message);
-    }
   }
 
   if (user === undefined) {
@@ -127,88 +140,113 @@ export default function App() {
         if (e.dataTransfer.files.length) void uploadFiles(e.dataTransfer.files);
       }}
     >
-      <header className="flex items-center gap-4 border-b border-line bg-surface px-4 py-3">
-        <div className="flex items-center gap-2 font-medium">
-          <HardDrive size={20} className="text-accent" />
-          <span className="hidden sm:inline">Drive</span>
+      <header className="flex items-center gap-4 px-4 py-2.5">
+        <div className="flex shrink-0 items-center gap-2 text-xl md:w-52">
+          <DriveMark />
+          <span className="hidden text-ink/90 sm:inline">Drive</span>
         </div>
 
-        <div className="relative mx-auto w-full max-w-xl">
-          <Search size={16} className="absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
+        <div className="relative mx-auto w-full max-w-2xl">
+          <Search size={18} className="absolute top-1/2 left-4 -translate-y-1/2 text-muted" />
           <input
             value={rawQuery}
             onChange={(e) => setRawQuery(e.target.value)}
             placeholder="Search in Drive"
             aria-label="Search files by name"
-            className="w-full rounded-full bg-canvas py-2.5 pr-4 pl-10 text-sm outline-none focus:bg-surface focus:ring-2 focus:ring-accent/40"
+            className="w-full rounded-full bg-raised py-3 pr-4 pl-12 text-sm text-ink outline-none placeholder:text-muted focus:bg-surface focus:ring-1 focus:ring-line"
           />
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="hidden text-sm text-muted md:inline">{user.email}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="hidden text-sm text-muted lg:inline">{user.email}</span>
           <Avatar url={user.avatarUrl} name={user.name} size="md" />
           <button
             type="button"
             onClick={async () => {
-              // Sign out locally whatever the server says: leaving someone
-              // looking signed in on a shared machine is the worse failure.
-              try {
-                await api.logout();
-              } catch (err) {
-                setError((err as Error).message);
-              } finally {
-                setUser(null);
-              }
+              await api.logout();
+              setUser(null);
             }}
             aria-label="Sign out"
-            className="rounded-full p-2 text-muted transition hover:bg-canvas"
+            className="rounded-full p-2 text-muted transition hover:bg-raised"
           >
             <LogOut size={18} />
           </button>
         </div>
       </header>
 
-      <div className="flex flex-1">
-        <aside className="hidden w-56 shrink-0 flex-col gap-1 p-4 sm:flex">
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            className="mb-4 flex items-center gap-3 self-start rounded-2xl border border-line bg-surface py-3.5 pr-6 pl-4 text-sm font-medium shadow-sm transition hover:shadow-md"
-          >
-            <Plus size={20} className="text-accent" />
-            New
-          </button>
+      <div className="flex min-h-0 flex-1 gap-2 pr-2 pb-2">
+        <Sidebar
+          scope={scope}
+          onScope={setScope}
+          onNew={() => inputRef.current?.click()}
+          storage={storage}
+        />
 
-          <NavItem icon={HardDrive} label="My Drive" active={scope === "mine"} onClick={() => setScope("mine")} />
-          <NavItem icon={Users} label="Shared with me" active={scope === "shared"} onClick={() => setScope("shared")} />
-        </aside>
+        <main className="min-w-0 flex-1 overflow-y-auto rounded-2xl bg-surface p-6">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <h1 className="text-2xl">{titles[scope]}</h1>
 
-        <main className="flex-1 p-4 sm:pl-0">
-          <div className="overflow-hidden rounded-2xl border border-line bg-surface">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:hidden">
-              <span className="text-sm font-medium">
-                {scope === "shared" ? "Shared with me" : "My Drive"}
-              </span>
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
-                className="flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-white"
+                className="flex items-center gap-1.5 rounded-full bg-raised px-4 py-2 text-sm transition hover:bg-line/60 md:hidden"
               >
-                <Plus size={14} /> New
+                <Plus size={16} /> New
               </button>
-            </div>
 
-            <FileTable
-              files={files}
-              me={user}
-              loading={loading}
-              query={query}
-              onDownload={download}
-              onRename={setRenaming}
-              onShare={(file) => setSharingId(file.id)}
-              onDelete={remove}
-            />
+              {inTrash && files.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm(`Permanently delete all ${files.length} file(s) in trash?`)) return;
+                    void run(async () => {
+                      await api.emptyTrash();
+                      await refresh();
+                    });
+                  }}
+                  className="flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm text-danger transition hover:bg-raised"
+                >
+                  <Trash2 size={15} /> Empty trash
+                </button>
+              )}
+            </div>
           </div>
+
+          {!inTrash && (
+            <div className="mb-6">
+              <FilterChips value={filters} onChange={setFilters} />
+            </div>
+          )}
+
+          <FileGrid
+            files={visible}
+            me={user}
+            loading={loading}
+            query={query}
+            inTrash={inTrash}
+            onDownload={(file) =>
+              void run(async () => {
+                const { url } = await api.downloadUrl(file.id);
+                window.location.href = url;
+              })
+            }
+            onRename={setRenaming}
+            onShare={(file) => setSharingId(file.id)}
+            onStar={(file) =>
+              void run(async () => replace(await api.setStarred(file.id, !file.starred)))
+            }
+            onTrash={(file) => void run(async () => replace(await api.remove(file.id)))}
+            onRestore={(file) => void run(async () => replace(await api.restore(file.id)))}
+            onDeleteForever={(file) => {
+              if (!window.confirm(`Permanently delete "${file.name}"? This cannot be undone.`)) return;
+              void run(async () => {
+                await api.deleteForever(file.id);
+                setFiles((f) => f.filter((x) => x.id !== file.id));
+                setStorage(await api.storage());
+              });
+            }}
+          />
         </main>
       </div>
 
@@ -224,20 +262,20 @@ export default function App() {
       />
 
       {dragging && (
-        <div className="pointer-events-none fixed inset-4 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-accent bg-accent-soft/70 text-lg font-medium text-accent">
+        <div className="pointer-events-none fixed inset-4 z-30 flex items-center justify-center rounded-3xl border-2 border-dashed border-accent bg-accent-soft/40 text-lg font-medium text-accent">
           Drop files to upload
         </div>
       )}
 
       {uploads.length > 0 && (
-        <div className="fixed right-4 bottom-4 z-30 w-72 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
+        <div className="fixed right-4 bottom-4 z-30 w-72 overflow-hidden rounded-xl border border-line bg-raised shadow-2xl">
           <p className="border-b border-line px-4 py-2 text-sm font-medium">
             Uploading {uploads.length} file{uploads.length > 1 ? "s" : ""}
           </p>
           {uploads.map((u) => (
             <div key={u.id} className="px-4 py-2">
               <p className="truncate text-xs text-muted">{u.name}</p>
-              <div className="mt-1 h-1 rounded-full bg-canvas">
+              <div className="mt-1 h-1 rounded-full bg-line">
                 <div
                   className="h-1 rounded-full bg-accent transition-all"
                   style={{ width: `${u.percent}%` }}
@@ -249,12 +287,15 @@ export default function App() {
       )}
 
       {error && (
-        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg bg-ink px-4 py-2.5 text-sm text-white shadow-lg">
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-line bg-raised px-4 py-2.5 text-sm shadow-2xl"
+        >
           {error}
           <button
             type="button"
             onClick={() => setError(null)}
-            className="ml-4 text-white/70 hover:text-white"
+            className="ml-4 text-accent hover:underline"
           >
             Dismiss
           </button>
@@ -265,7 +306,7 @@ export default function App() {
         file={renaming}
         onClose={() => setRenaming(null)}
         onDone={(updated) => {
-          setFiles((f) => f.map((x) => (x.id === updated.id ? updated : x)));
+          replace(updated);
           setRenaming(null);
         }}
         onError={setError}
@@ -274,37 +315,23 @@ export default function App() {
       <ShareDialog
         file={files.find((f) => f.id === sharingId) ?? null}
         onClose={() => setSharingId(null)}
-        onChanged={(updated) => {
-          if (updated) setFiles((f) => f.map((x) => (x.id === updated.id ? updated : x)));
-          else void refresh();
-        }}
+        onChanged={(updated) => (updated ? replace(updated) : void refresh())}
       />
     </div>
   );
 }
 
-function NavItem({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: typeof HardDrive;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
+/** Google Drive's triangle mark, so the header matches the design. */
+function DriveMark() {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-3 rounded-full px-4 py-2 text-sm transition ${
-        active ? "bg-accent-soft font-medium text-accent" : "text-ink hover:bg-line/50"
-      }`}
-    >
-      <Icon size={18} />
-      {label}
-    </button>
+    <svg width="26" height="23" viewBox="0 0 87 78" aria-hidden="true">
+      <path fill="#0066da" d="M6.6 68.85 10.5 75.5a9 9 0 0 0 3.3 3.3l13.9-24.1H0a9 9 0 0 0 1.2 4.5z" />
+      <path fill="#00ac47" d="M43.5 25 29.6.9a9 9 0 0 0-3.3 3.3L1.2 47.4A9 9 0 0 0 0 51.9h27.7z" />
+      <path fill="#ea4335" d="M73.2 78.8a9 9 0 0 0 3.3-3.3l1.6-2.8 7.8-13.5a9 9 0 0 0 1.2-4.5H59.3l5.9 11.6z" />
+      <path fill="#00832d" d="M43.5 25 57.4.9A8.9 8.9 0 0 0 53.1 0H33.9c-1.5 0-3 .4-4.3 1z" />
+      <path fill="#2684fc" d="M59.3 51.9H27.7L13.8 76a8.9 8.9 0 0 0 4.3 1h50.8c1.5 0 3-.4 4.3-1z" />
+      <path fill="#ffba00" d="M73 26.5 60.4 4.2A9 9 0 0 0 57.1.9L43.5 25l15.8 26.9h27.6a9 9 0 0 0-1.2-4.5z" />
+    </svg>
   );
 }
 
@@ -344,20 +371,20 @@ function RenameDialog({
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent"
+          className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
         />
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-accent hover:bg-accent-soft"
+            className="rounded-full px-5 py-2 text-sm text-accent transition hover:bg-raised"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy || !name.trim()}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50"
+            className="rounded-full bg-accent px-5 py-2 text-sm font-medium text-canvas transition hover:brightness-110 disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save"}
           </button>

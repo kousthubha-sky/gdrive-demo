@@ -37,7 +37,7 @@ export function Modal({ open, title, onClose, children }: Props) {
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="rounded-full p-1.5 text-muted transition hover:bg-canvas"
+          className="rounded-full p-1.5 text-muted transition hover:bg-raised"
         >
           <X size={18} />
         </button>

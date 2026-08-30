@@ -105,6 +105,7 @@ The server validates its environment at boot and exits with a list of what is mi
 | `AWS_REGION`, `S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | From step 3. |
 | `S3_ENDPOINT` | Only for S3-compatible stores. Leave blank for AWS. |
 | `MAX_UPLOAD_BYTES` | Upload size cap. Defaults to 100 MB. |
+| `STORAGE_QUOTA_BYTES` | Quota shown by the sidebar meter. Display only; uploads are not refused. Defaults to 15 GB. |
 
 ### 5. Create the database tables
 
@@ -203,11 +204,15 @@ Errors come back as `{ "error": "..." }` with a meaningful status code.
 | `GET` | `/api/auth/google/callback` | OAuth callback; sets the session cookie and redirects to `WEB_URL`. |
 | `GET` | `/api/auth/me` | The signed-in user. |
 | `POST` | `/api/auth/logout` | Clear the session cookie. |
-| `GET` | `/api/files?q=&scope=` | List files. `q` searches by name, case-insensitively. `scope` is `all`, `mine` or `shared`. |
+| `GET` | `/api/files?q=&scope=` | List files. `q` searches by name, case-insensitively. `scope` is `all`, `mine`, `shared`, `starred`, `recent` or `trash`. |
+| `GET` | `/api/files/storage` | Bytes used and the display quota, for the sidebar meter. |
 | `POST` | `/api/files` | Upload. `multipart/form-data` with a single `file` field. |
 | `GET` | `/api/files/:id/url` | A presigned download URL, valid for five minutes. `?disposition=inline` to view rather than download. |
-| `PATCH` | `/api/files/:id` | Rename. Body `{ "name": "..." }`. |
-| `DELETE` | `/api/files/:id` | Delete the row and the S3 object. |
+| `PATCH` | `/api/files/:id` | Rename or star. Body `{ "name"?: "...", "starred"?: true }`. |
+| `DELETE` | `/api/files/:id` | Move to trash. Reversible; the S3 object is untouched. |
+| `POST` | `/api/files/:id/restore` | Restore from trash. |
+| `DELETE` | `/api/files/:id/permanent` | Delete for good, row and S3 object. |
+| `DELETE` | `/api/files/trash` | Empty the trash. |
 | `POST` | `/api/files/:id/shares` | Share with another user. Body `{ "email": "..." }`. |
 | `DELETE` | `/api/files/:id/shares/:userId` | Revoke a share. |
 
@@ -232,6 +237,11 @@ Non-owners get `404` rather than `403`, which avoids confirming that a file id e
 Path separators become dashes and control characters are dropped, because the name is echoed back in a `Content-Disposition` header.
 This is the one piece of logic with a unit test.
 
+**Delete is two-stage.**
+`DELETE /api/files/:id` only stamps `trashedAt`, so the S3 object survives and a restore is one column write.
+Only `permanent` and emptying the trash remove bytes.
+Every other view filters `trashedAt: null` in the `WHERE` clause, so a trashed file cannot leak back into a listing.
+
 **Delete order.**
 The metadata row is removed first and the S3 object second.
 A row with no object is a broken download; an object with no row is invisible and merely costs storage.
@@ -244,14 +254,17 @@ If the object uploads but the metadata write fails, the object is deleted again 
 
 - Google OAuth sign-in and sign-out, with a secure cookie session.
 - Upload (button, plus drag and drop anywhere) with a live progress bar.
-- Rename, delete, and download through presigned URLs.
-- Debounced search by filename.
+- Rename, star, and download through presigned URLs.
+- Trash: delete is reversible, with restore, delete-for-good, and empty-trash.
+- Debounced search by filename, plus Type / People / Modified filters.
+- Sidebar storage meter over the S3 bytes actually stored.
 - Sharing with another registered user, and revoking a share. Shared files appear under **Shared with me**.
 - Docker and Docker Compose.
 - Validation and error handling on every endpoint, with a `413` on oversized uploads.
 
 ## Not implemented
 
-- Folders. The assignment describes a flat file list, so files are flat.
-- Trash and restore. Delete is immediate and permanent.
+- Folders. The assignment describes a flat file list, and the design shows one, so files are flat.
 - Public share links. Sharing is to a named account that has signed in at least once.
+- Thumbnails. Cards show a file-type tile; real previews would mean one presigned request per file per render.
+- Auto-purge of old trash. Trash is emptied by hand, not on a timer.
