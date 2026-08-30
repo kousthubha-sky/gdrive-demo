@@ -175,6 +175,11 @@ Render is used below because its free tier needs no card.
 
 ### Render
 
+A `render.yaml` blueprint is checked in, so the fastest path is **New → Blueprint**, point it at this repository, and fill in the values it prompts for.
+`JWT_SECRET` is generated for you; `APP_URL` and `WEB_URL` are both your Render URL.
+
+To do it by hand instead:
+
 1. Push this repository to GitHub.
 2. In Render, create a **Web Service** from the repository.
    - Environment: **Docker** (the `Dockerfile` at the repository root is picked up automatically).

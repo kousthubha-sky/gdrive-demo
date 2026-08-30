@@ -1,0 +1,36 @@
+# Render blueprint. Point Render at this repo and it builds the Dockerfile,
+# runs `prisma migrate deploy` at boot, and serves the API plus the built SPA
+# on one URL. Values marked `sync: false` are prompted for at deploy time.
+services:
+  - type: web
+    name: drive
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      # Both are your Render URL, e.g. https://drive-xyz.onrender.com
+      # The same origin serves the API and the SPA, so they are identical.
+      - key: APP_URL
+        sync: false
+      - key: WEB_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AWS_REGION
+        sync: false
+      - key: S3_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
