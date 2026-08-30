@@ -15,13 +15,14 @@ services:
 
   app:
     build: .
-    # Google OAuth, JWT and S3 values come from your .env; the database is the
-    # container above, so DATABASE_URL is overridden here.
     env_file: .env
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://drive:drive@db:5432/drive
+      # Never paste a real connection string here - this file is in git.
+      # Compose reads .env for interpolation, so a DATABASE_URL there (your
+      # Neon one) wins; with none set it falls back to the db container above.
+      DATABASE_URL: ${DATABASE_URL:-postgresql://drive:drive@db:5432/drive}
     ports:
       - "4000:4000"
     depends_on:

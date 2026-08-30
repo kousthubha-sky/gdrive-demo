@@ -174,8 +174,12 @@ cp .env.example .env   # fill it in; DATABASE_URL is overridden by compose
 docker compose up --build
 ```
 
-This starts Postgres and the app together on <http://localhost:4000>.
+This starts the app on <http://localhost:4000>.
 Set `APP_URL` and `WEB_URL` to `http://localhost:4000` in `.env` first, and add `http://localhost:4000/api/auth/google/callback` to the Google OAuth client.
+
+If `.env` sets `DATABASE_URL`, the app uses it and the bundled Postgres container just idles.
+Without one it falls back to that container, giving a fully self-contained stack.
+Never write a real connection string into `docker-compose.yml`: it is tracked in git, and `.env` is not.
 
 To build the image on its own:
 
