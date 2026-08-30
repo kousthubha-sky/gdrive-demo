@@ -110,17 +110,24 @@ The server validates its environment at boot and exits with a list of what is mi
 ### 5. Create the database tables
 
 ```bash
-npm run db:push
-```
-
-Or, to apply the checked-in migration instead:
-
-```bash
 npm run db:deploy
 ```
 
-Run these from the repository root.
+This applies the checked-in migrations and records them, which is exactly what `npm start` does on boot.
+Use the same command locally and in production so the two never disagree.
+
+Run it from the repository root.
 The Prisma CLI reads `.env` relative to its working directory, so all `db:*` scripts live in the root `package.json` alongside the `.env` file rather than in `server/`.
+
+`npm run db:push` also exists and is quicker while iterating on the schema, but it writes the schema **without recording a migration**.
+A database shaped that way then fails `migrate deploy` with `P3005: The database schema is not empty`, because the schema is populated and the history is not.
+If you hit that, confirm there is no drift and then baseline the existing database:
+
+```bash
+npx prisma migrate resolve --applied <migration_folder_name> --schema server/prisma/schema.prisma
+```
+
+Run it once per folder in `server/prisma/migrations`, oldest first.
 
 ### 6. Run it
 
