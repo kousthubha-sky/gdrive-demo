@@ -6,7 +6,21 @@ Sign in with Google, then upload, rename, search, download, delete and share fil
 File bytes live in an S3 bucket; file metadata lives in Postgres.
 One Express process serves both the REST API and the built React SPA, so there is a single origin, a single deploy and no CORS configuration.
 
-New to this codebase? [docs/CODE_TOUR.md](docs/CODE_TOUR.md) walks through it in reading order, with the reasoning behind each decision.
+The reasoning behind the main design decisions is in [Design notes](#design-notes) near the end.
+
+## Live demo
+
+**<https://gdrive-demo-awkv.onrender.com>**
+
+Two things are worth knowing before you sign in.
+
+- **The Google OAuth client is in Testing mode**, so only allowlisted Google accounts can sign in.
+  Send me the address you would like to use and I will add it, usually within the hour.
+  Publishing the app instead would require a privacy policy, terms of service and domain verification, which seemed disproportionate for a project of this scope.
+  You can also run it locally against your own OAuth client using the setup below, which has no such restriction.
+- **The instance sleeps when idle**, because it is on Render's free tier.
+  The first request after a quiet period takes roughly 30 seconds while it wakes up.
+  That is a cold start, not a failure.
 
 ## Stack
 
@@ -28,7 +42,6 @@ New to this codebase? [docs/CODE_TOUR.md](docs/CODE_TOUR.md) walks through it in
 │   └── test/          node:test unit tests
 ├── web/               React SPA (Vite)
 ├── scripts/verify.mjs end-to-end check against a live database and bucket
-├── docs/              CODE_TOUR.md (how to read this) and HANDOFF.md
 ├── Dockerfile         multi-stage build of the whole app
 └── docker-compose.yml app + Postgres for local containers
 ```
@@ -225,7 +238,7 @@ To do it by hand instead:
 ### Keeping the free instance awake
 
 Render's free tier spins a service down after 15 minutes without inbound traffic, and the cold start that follows takes most of a minute.
-A reviewer opening a cold link may well assume it is broken.
+Someone opening a cold link may well assume it is broken.
 
 `.github/workflows/keep-warm.yml` pings `/api/health` every 10 minutes to prevent that.
 The endpoint deliberately does not touch the database, so the ping is nearly free and does not keep waking Neon.
@@ -317,7 +330,7 @@ If the object uploads but the metadata write fails, the object is deleted again 
 
 ## Not implemented
 
-- Folders. The assignment describes a flat file list, and the design shows one, so files are flat.
+- Folders. The file list is flat by design, so there is no directory hierarchy.
 - Public share links. Sharing is to a named account that has signed in at least once.
 - Thumbnails. Cards show a file-type tile; real previews would mean one presigned request per file per render.
 - Auto-purge of old trash. Trash is emptied by hand, not on a timer.

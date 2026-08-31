@@ -12,7 +12,7 @@ name: Keep warm
 on:
   schedule:
     - cron: "*/10 * * * *"
-  workflow_dispatch: # so it can be triggered by hand before a demo
+  workflow_dispatch: # so it can also be triggered by hand
 
 jobs:
   ping:

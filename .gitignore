@@ -4,5 +4,3 @@ dist/
 .env.local
 *.log
 .DS_Store
-.code-review-graph/
-.playwright-mcp/
