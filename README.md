@@ -16,7 +16,7 @@ Two things are worth knowing before you sign in.
 
 - **The Google OAuth client is in Testing mode**, so only allowlisted Google accounts can sign in.
   Send me the address you would like to use and I will add it, usually within the hour.
-  Publishing the app instead would require a privacy policy, terms of service and domain verification, which seemed disproportionate for a project of this scope.
+  Testing mode allows up to 100 accounts, but each one has to be listed explicitly; there is no automatic allowance.
   You can also run it locally against your own OAuth client using the setup below, which has no such restriction.
 - **The instance sleeps when idle**, because it is on Render's free tier.
   The first request after a quiet period takes roughly 30 seconds while it wakes up.
@@ -70,7 +70,8 @@ npm install-scripts approve @prisma/client prisma @prisma/engines esbuild && npm
 ### 2. Create the Google OAuth client
 
 1. Open the [Google Cloud console credentials page](https://console.cloud.google.com/apis/credentials).
-2. Configure the OAuth consent screen. External + Testing is fine; add your own Google account under **Test users**.
+2. Configure the OAuth consent screen as **External**.
+   Leave it in **Testing** and add your own Google account under **Audience → Test users**, which is enough for local development.
 3. Create credentials → **OAuth client ID** → **Web application**.
 4. Under **Authorised redirect URIs** add exactly `http://localhost:4000/api/auth/google/callback`.
    Add your production equivalent (`https://your-app.example.com/api/auth/google/callback`) as a second URI when you deploy.
@@ -78,6 +79,16 @@ npm install-scripts approve @prisma/client prisma @prisma/engines esbuild && npm
 
 The redirect URI must match `${APP_URL}/api/auth/google/callback` character for character, including the scheme and any trailing path.
 A mismatch is the single most common cause of `redirect_uri_mismatch`.
+
+**Testing or In production?**
+Testing mode allows at most 100 accounts and every one of them must be listed under **Audience → Test users**; an unlisted account gets `access_denied`.
+A test user's authorization also expires seven days after they consent, so someone who signed in last week has to consent again.
+
+For a deployment that strangers need to reach, publish it instead.
+This app requests only `profile` and `email`, which are non-sensitive, and Google exempts that case from review entirely: no verification, no unverified-app warning, no seven-day expiry, and no test-user list.
+Publishing is **Audience → Publish app**, and it takes effect immediately.
+Filling in the App domain fields is what pulls in the privacy policy, terms of service and authorized-domain requirements, so leave them blank unless something needs them.
+If you do fill them in, an authorized domain is a bare hostname with no scheme and no trailing slash, for example `your-app.onrender.com`.
 
 ### 3. Create the S3 bucket
 
